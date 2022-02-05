@@ -1,0 +1,240 @@
+---
+title: "자료분석특론2 HW3"
+author: '212STG10 박영은'
+output: html_document
+---
+
+### 1. ###
+#### (a) ####
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+kidney <- read_csv("kidney.csv")
+
+n = nrow(kidney)
+jackknife.all<-NULL
+
+for(i in 1:n){
+  jackknife.all = c(jackknife.all,cor(kidney$age[-i],kidney$tot[-i]))
+}
+
+se.jack = sqrt((n-1)/n*sum((jackknife.all-mean(jackknife.all))^2))
+se.jack
+```
+
+#### (b) ####
+```{r}
+theta_hat_i <- jackknife.all
+theta_hat <- mean(jackknife.all)
+
+diff <- theta_hat_i - theta_hat
+diff
+
+plot(diff, pch=16)
+abline(h=0, col='red')
+
+length(which(diff>=0.01|diff<=-0.01))
+length(which(diff>=0.005|diff<=-0.005))
+```
+
+대부분 0을 기준으로 큰 차이 없이 분포하지만, 약 9개의 observation에서 차이가 0.01이상 났다. 또한 이 observation을 포함하여 차이가 0.005이상 나는 observation은 25개이다. 이러한 observation들은 standard error에 큰 영향을 주었을 것으로 예측된다. 
+
+
+### 2. ###
+```{r}
+x = c(10, 2, 6)
+mean(x)
+
+p003 <- c(0, 0, 3)
+p012 <- c(0, 1, 2)
+p021 <- c(0, 2, 1)
+p030 <- c(0, 3, 0)
+p102 <- c(1, 0, 2)
+p0 <- c(1, 1, 1)
+p120 <- c(1, 2, 0)
+p210 <- c(2, 1, 0)
+p201 <- c(2, 0, 1)
+p300 <- c(3, 0, 0)
+p1 <- c(0, 1.5, 1.5)
+p2 <- c(1.5, 0, 1.5)
+p3 <- c(1.5, 1.5, 0)
+
+list <- list(p003, p012, p021, p030, p102, p120, p210, p201, p300, p0, p1, p2, p3)
+for (i in list){
+  print(x%*%i/3)
+}
+```
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+
+.
+
+.
+
+.
+
+.
+
+.
+
+
+### 3. ###
+#### (a) ####
+```{r}
+super <- read.table("http://web.stanford.edu/~hastie/CASI_files/DATA/supernova.txt", header=TRUE)
+
+head(super)
+n <- nrow(super)
+row.names(super) <- NULL
+
+# model 1
+error1 <- NULL
+for(i in 1:n){
+  lm_super <- lm(Magnitude~., data=super[-i,])
+  predict_i <- predict(lm_super, super[i,])
+  error1[i] <- mean((super[i,]$Magnitude-predict_i)^2)
+}
+cv_error1 <- mean(error1)
+cv_error1
+
+# model 2
+error2 <- NULL
+for(i in 1:n){
+  lm_super <- lm(Magnitude~E1+E2+E4+E6+E7, data=super[-i,])
+  predict_i <- predict(lm_super, super[i,])
+  error2[i] <- mean((super[i,]$Magnitude-predict_i)^2)
+}
+cv_error2 <- mean(error2)
+cv_error2
+```
+
+#### (b) ####
+```{r}
+error <- NULL
+for(i in 1:n){
+  # i번째 행을 제외한 데이터, 변수 전체 적합
+  lm_super <- lm(Magnitude~., data=super[-i,])
+  
+  # coefficient의 절댓값이 큰 5개 변수 추출
+  top5 = sort(abs(lm_super$coef[-1]),decreasing = TRUE)[1:5]
+  
+  # 추출된 변수만을 가지고 다시 적합
+  magnitude <- super$Magnitude
+  new_data = as.data.frame(cbind(super[labels(top5)], magnitude))
+  lm_super2 <- lm(magnitude~., data=new_data[-i,])
+  
+  # i번째 행 y값 예측
+  predict_i <- predict(lm_super2, new_data[i,])
+  
+  # error
+  error[i] <- mean((new_data[i,]$magnitude-predict_i)^2)
+}
+
+cv_error <- mean(error)
+cv_error
+```
+
+
+
+### 4. ###
+
+```{r}
+score<- read.csv('student score.txt', sep=' ')
+
+# 사용되는 변수 추출
+mech <- score[,1]
+vec <- score[,2]
+
+# theta 계산
+theta_cor = cor(mech, vec)
+
+set.seed(1)
+B = 2000
+
+theta_hat <- NULL
+t_stat <- NULL
+se <- NULL
+
+for(i in 1:B){
+  index <- sample(22, replace=TRUE)
+  mech_boot = mech[index]
+  vec_boot = vec[index]
+  theta_hat[i] = cor(mech_boot, vec_boot)   # theta.hat 게산
+  se[i] <- (1-theta_hat[i]^2)/sqrt(19)   # correlation se
+  t_stat[i] <- (theta_hat[i]-theta_cor)/se[i]   # t-statistics
+}
+
+ggplot(data.frame(t_stat), aes(t_stat)) + 
+  geom_histogram(binwidth = 0.30) +
+  geom_vline(xintercept = 0)
+
+quantile(t_stat,0.025)
+quantile(t_stat,0.975)
+```
+
+histogram을 살펴보면 데이터의 분포도 비슷하며, t*에 대한 confidence interval은 근소한 차이가 있긴 하지만 비슷하다. 이는 seed가 달라 sampling에서의 차이가 있을 수 있기 때문이다.
+
+
+### 5. ###
+#### (a) ####
+
+```{r}
+library(ggplot2)
+# model1
+lm_super1 <- lm(Magnitude~., data=super)
+summary(lm_super1)
+
+predicted_1 <- predict(lm_super1)
+
+super_compare <- as.data.frame(cbind(predicted_1, super$Magnitude))
+colnames(super_compare) <- c('y.hat', 'y')
+
+# plot(recreate Figure 12.1)
+ggplot(super_compare, aes(y.hat, y)) +
+  geom_point() +
+  labs(y= "Predicted magnitude y.hat", x = "Absolute magnitude y") +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  annotate("text", label="apparent mean squared", x=4, y=-3) +
+  annotate("text", label="error = 0.72", x=4, y=-3.5)
+```
+
+#### (b) ####
+```{r}
+sort(abs(lm_super1$coef[-1]),decreasing = TRUE)[1:5]
+
+# model2
+lm_super2 <- lm(Magnitude~E1+E2+E4+E6+E7, data=super)
+summary(lm_super2)
+```
+
+#### (c) ####
+```{r}
+squared_error1 <- sum(residuals(lm_super1)^2)
+squared_error2 <- sum(residuals(lm_super2)^2)
+error_compare <- as.data.frame(cbind(round(squared_error1,4), round(squared_error2,4)))
+names(error_compare) <- c('model1', 'model2')
+error_compare
+```
+
+두 경우 squared error가 매우 비슷하다. 따라서, full model과 변수를 5개로 줄인 모델의 error가 큰 차이가 없기 때문에, 이 경우에는 분석 목적에 따라 변수를 5개로 줄인 모델이 더 나은 선택이 될 수 있다. 

@@ -1,0 +1,185 @@
+---
+title: "자료분석특론2 HW #2"
+author: '212STG10 박영은'
+output: html_document
+---
+
+### 1. ###
+ 
+#### (a) ####
+```{r}
+set.seed(1)
+
+# 공간 생성
+mi <- c(0, 500)
+xi <- c(0, 500)
+
+# 주어진 분포에서 max값을 갖는 index와 d값을 찾는 함수 생성
+func <- function(k) {
+  for(i in 1:k) {
+    mi[i] <- 3*i/k
+    xi[i] <- rnorm(1, mean=mi[i], sd=1)
+  }
+  i_max <- which.max(xi)
+  d <- xi[i_max] - mi[i_max]
+}
+
+# 200번 simulation
+d_200 <- replicate(200, func(500))
+d_200
+```
+
+
+#### (b) ####
+```{r}
+library(ggplot2)
+
+ggplot(data.frame(d_200), aes(d_200)) + 
+  geom_histogram(binwidth = 0.10)
+```
+
+
+#### (c) ####
+
+Figure 3.4에서 gene 610은 다른 gene들에 비해 높은 effect-size estimate을 가지며 현재 데이터에서 max값임을 알 수 있다. 
+위의 문제 (a), (b)에서는 gene 610과 비슷하게 normal 분포에서의 최댓값을 찾고, 이와 mu값의 차이를 d로 나타내었다. 즉, 편향을 나타낸다. 그 결과, histogram 상으로는, 편향이 모두 1.5를 넘고 많은 d값이 1.5와 3.8 사이에 위치하는 것을 확인할 수 있다. 즉, 분포의 max값에 초점을 맞추면 상향 편향이 발생하는 것을 보여준다. 
+따라서, frequentist들의 관점은 Figure 3.4에서의 평균값이 아닌 max값에 초점을 맞추면 추정치에 대해서 위와 같이 상향 편향이 발생하며 하향 수정해야한다는 단점을 가진다. 
+
+
+
+### 2. ###
+
+```{r}
+leuk<- read.csv('leukemia_big.csv')
+
+######### 실제 t값 구하기
+leuk_136_1 = as.data.frame(t(leuk[136,]))
+names(leuk_136_1) = 'gene_136'
+leuk_136_1['type'] = 'all'
+leuk_136_1[c(21:34, 62:72), ]['type']='aml'
+
+# 등분산성 체크
+var.test(gene_136~type, data=leuk_136_1)  # 등분산성 만족
+
+# two sample t-test
+t_stat_1 <- t.test(gene_136~type, data=leuk_136_1, var.equal=TRUE)$statistic
+t_stat_1
+
+######### permutation 후 t값 구하기
+leuk_136 = as.data.frame(t(leuk[136,]))
+names(leuk_136) = 'gene_136'
+row.names(leuk_136) <- 1:72
+
+set.seed(1)
+
+func2 <- function(k){
+  choose <- sample(72, size=k, replace=FALSE)
+  
+  leuk_136['type'] = 'all'
+  leuk_136[choose, ]['type']='aml'
+
+  # two sample t-test
+  t_stat <- t.test(gene_136~type, data=leuk_136)$statistic
+  t_stat
+}
+
+# 1000 번 반복
+per <- replicate(1000, func2(25))
+per <- data.frame(per)
+names(per) <- c('t')
+
+# 10000 번 반복
+per2 <- replicate(10000, func2(25))
+per2 <- data.frame(per2)
+names(per2) <- c('t')
+
+
+######### histogram
+
+# histogram(permutation 1000)
+ggplot(per, aes(t)) + 
+  geom_histogram(binwidth = 0.2) + 
+  geom_vline(xintercept=t_stat_1, color='red', size = 1)+
+  geom_vline(xintercept=abs(t_stat_1), color='red', size = 1)+
+  annotate("text", x=t_stat_1, y=-3, label="-3.01")+
+  annotate("text", x=abs(t_stat_1), y=-3, label="3.01")+
+  ggtitle("Histogram based on 1000 permutations")
+
+
+# histogram(permutation 10000)
+ggplot(per2, aes(t)) + 
+  geom_histogram(binwidth = 0.2)+ 
+  geom_vline(xintercept=t_stat_1, color='red', size = 1)+
+  geom_vline(xintercept=abs(t_stat_1), color='red', size = 1)+
+  annotate("text", x=t_stat_1, y=-30, label="-3.01")+
+  annotate("text", x=abs(t_stat_1), y=-30, label="3.01")+
+  ggtitle("Histogram based on 10000 permutations")
+```
+
+
+### 3. ###
+
+```{r}
+library(MASS)
+set.seed(1)
+
+mu <- c(0, 0)
+var <- matrix(c(1, 0.5, 0.5, 1), ncol=2)
+
+xi <- mvrnorm(n=1000, mu, var)
+xi <- data.frame(xi)
+head(xi)
+```
+
+
+#### (a) ####
+```{r}
+reg <- lm(xi$X2~xi$X1)
+summary(reg)
+
+ggplot(xi, aes(X1, X2))+
+  geom_point()+
+  stat_smooth(method='lm', level = 0)
+
+######### conditional 분포
+
+m1 <- 0
+m2 <- 0
+var1 <- 1
+var2 <- 1
+corr <- 0.5
+
+#mean
+m2+corr*var1^(-1)*(xi$X1-m1)
+#sd
+var2-corr*var1^(-1)*corr
+```
+
+
+
+#### (b) ####
+```{r}
+reg <- lm(xi$X1~xi$X2)
+summary(reg)
+
+ggplot(xi, aes(X1, X2))+
+  geom_point()+
+  stat_smooth(method='lm', level = 0)
+
+######### conditional 분포
+#mean
+m1+corr*var2^(-1)*(xi$X2-m2)
+
+#sd
+var1-corr*var2^(-1)*corr
+
+```
+
+
+
+
+
+
+
+
+
