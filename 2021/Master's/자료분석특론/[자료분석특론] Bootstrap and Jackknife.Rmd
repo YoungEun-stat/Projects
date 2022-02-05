@@ -1,0 +1,30 @@
+---
+output: html_document
+---
+
+```{r}
+x<-c(10, 13, 20, 17)
+
+#### Bootstrap ####
+set.seed(1)
+n = length(x)
+B = 256
+boot_mean<-NULL
+for(i in 1:B){
+  boot_mean[i] <- mean(sample(x, 4, replace=T))
+}
+summary(boot_mean)
+sd(boot_mean)   #1.825805
+sqrt(sum((boot_mean-mean(boot_mean))^2)/(B-1))   #1.825805
+
+
+#### Jackknife ####
+n = length(x)
+jackknife = NULL
+for(i in 1:n){
+  jackknife = c(jackknife, mean(x[-i]))
+}
+summary(jackknife)
+se.jack = sqrt((n-1)/n*sum((jackknife-mean(jackknife))^2))
+se.jack   #2.198484
+```
