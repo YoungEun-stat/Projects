@@ -1,0 +1,105 @@
+---
+output: word_document
+---
+
+
+### 1. ###
+
+```{r}
+library(numDeriv)
+
+########## define target function ##########
+
+### target function 1 ###
+f1 <- function(x){
+  (log(x)/(1+x))
+}
+
+# plot
+x1 <- seq(3,4, 0.01)
+plot(x1, f1(x1), type='l')
+
+
+### target function 2 ###
+f2 <- function(x){
+  (x-1)^2
+}
+
+# plot
+x2 <- seq(-5,5, 0.01)
+plot(x2, f2(x2), type='l')
+
+
+### target function 3 ###
+f3 <- function(x){
+  ((4*log(x^2)*x-sin(cos(x)))/(x^2+3*x))
+}
+
+# plot
+x3 <- seq(4,5, 0.01)
+plot(x3, f3(x3), type='l')
+
+
+########## bisection method으로 f'(x)=0이 되는 x 찾는 함수 정의 ##########
+bisec<-function(f,a,b){
+  
+	#get the function as an input
+	f<-match.fun(f)
+	ff<-function(x) f(x)
+	
+	#initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+	x0<-(a+b)/2
+
+	while ( niter<=maxiter && err >= threshold){
+		#update interval
+		if (genD(ff, a)$D[,1]*genD(ff, x0)$D[,1] <= 0)	{b<-x0}
+		else	{a<-x0}
+		
+		#update x
+		oldx0<-x0
+		x0<-(a+b)/2
+		
+		#update error and niter
+		err<-abs(oldx0-x0)
+		niter<-niter+1
+		# to see each step
+		#print(paste(niter,x0,err,sep="  "))
+
+	}
+  
+	# show result (niter, x0, f(x0), f'(x0))
+	cat(niter,x0,genD(ff, x0)$D[,1],ff(x0))
+}
+
+# 결과
+system.time(bisec(f1, 0.0001,10))
+system.time(bisec(f2, -10, 10))
+system.time(bisec(f3, 0.0001, 10))
+```
+
+
+
+### 2.###
+
+```{r}
+# 일변량 함수
+func1 <- function(x){3*x^2+2*x+1}
+a1 <- genD(func1, 10)
+a1
+
+# 다변량 함수
+func2 <- function(x){
+  x1 <- x[1]
+  x2 <- x[2]
+  (x1^2+x1+x2^2+1)}
+
+a2<-genD(func2, c(2,5))
+a2
+```
+
+
+

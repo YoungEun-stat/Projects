@@ -1,0 +1,363 @@
+---
+title: "Untitled"
+output: word_document
+---
+
+## 1. 
+
+```{r}
+mygmm <- function(x){
+  
+  #initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+	theta <- c()
+	
+	theta[1] <- 1/2
+	sorted_sample <- sort(sample(x, 2))
+	theta[2] <- sorted_sample[1]  # mu1
+	theta[3] <- sorted_sample[2]  # mu2
+	var <- sample(var(x),2)
+	theta[4] <- var[1]  # sigma1
+	theta[5] <- var[2]  # sigma2
+	
+	phi1 <- dnorm(x, mean=theta[2], sd = sqrt(theta[4]))
+  phi2 <- dnorm(x, mean=theta[3], sd = sqrt(theta[5]))
+	
+  while(err > threshold && niter <= maxiter){
+    
+    # E-step
+    y = theta[1] * phi1 / (theta[1] *phi1 + (1- theta[1]) * phi2)
+    
+    # save
+    old_theta <- theta
+    old_phi1 <- phi1
+    old_phi2 <- phi2
+    
+    # M-step (update)
+    theta[1] <- mean(y)
+    theta[2] <- sum(y*x)/sum(y)
+    theta[3] <- sum((1-y)*x)/sum(1-y)
+    theta[4] <- sum(y*(x-theta[2])^2)/sum(y)
+    theta[5] <- sum((1-y)*(x-theta[3])^2)/sum(1-y)
+    
+    phi1 <- dnorm(x, mean=theta[2], sd = sqrt(theta[4]))
+    phi2 <- dnorm(x, mean=theta[3], sd = sqrt(theta[5]))
+
+    #update error and niter
+    old_lik <- sum(log(old_theta[1]*old_phi1 + (1-old_theta[1])*old_phi2))
+    lik <- sum(log(theta[1]*phi1 + (1-theta[1])*phi2))
+    
+	  err<- abs(lik-old_lik)
+    #err <- abs(theta-old_theta)
+		niter<-niter+1
+		
+		#print(c(mu1, mu2))
+  }
+    
+  round(c(niter-1, theta, err),4)
+}
+  
+```
+
+
+#### (1) overlapping 구간이 없는 경우
+
+```{r}
+library(EnvStats)
+
+set.seed(123)
+x<- rnormMix(1000, mean1 = -10, sd1 = 1, mean2 = 10, sd2 = 1, p.mix = 0.5)
+plot(x)
+mygmm(x)
+
+system.time(mygmm(x))
+```
+
+
+#### (2) overlapping 구간이 없는 경우 + sample size 증가
+```{r}
+set.seed(123)
+x2 <- rnormMix(100000, mean1 = -10, sd1 = 1, mean2 = 10, sd2 = 1, p.mix = 0.7)
+plot(x2)
+mygmm(x2)
+system.time(mygmm(x2))
+```
+
+#### (3) overlapping 구간이 없는 경우 + sample size 감소
+```{r}
+set.seed(123)
+x3 <- rnormMix(200, mean1 = -10, sd1 = 1, mean2 = 10, sd2 = 1, p.mix = 0.7)
+plot(x3)
+mygmm(x3)
+system.time(mygmm(x3))
+```
+
+#### (4) overlapping 구간이 살짝 있는 경우
+```{r}
+set.seed(123)
+x4 <- rnormMix(200, mean1 = -2, sd1 = 1, mean2 = 2, sd2 = 1, p.mix = 0.7)
+plot(x4)
+mygmm(x4)
+system.time(mygmm(x4))
+```
+
+#### (4) overlapping 구간이 매우 넓은 경우
+```{r}
+set.seed(123)
+x5 <- rnormMix(200, mean1 = 0, sd1 = 2, mean2 = 2, sd2 = 2, p.mix = 0.7)
+plot(x5)
+mygmm(x5)
+
+system.time(mygmm(x5))
+```
+
+
+
+## 2.
+
+```{r}
+mylse <- function(data){
+  
+  #initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+	
+  idx <- which(is.na(data))  # 결측치가 있는 행 인덱스
+  data$y[idx] <- mean(data$y)  # 결측치 평균으로 채우기
+  lm1 <- lm(y~., data=data)  # 초기 fit
+  betas <- as.numeric(coef(lm1))  # 베타 초기값
+  
+  while(err > threshold && niter <= maxiter){
+    
+    # E-step
+    data$y[idx] <- fitted(lm1)[idx]
+    lm1 <- lm(y~., data=data)
+    
+    # M-step
+    #update beta
+    old_betas <- betas
+    betas <- as.numeric(coef(lm1))
+    
+    #update error and niter
+    err <-  abs(betas-old_betas)
+    niter <- niter+1
+  }
+
+  round(c(niter-1, fitted(lm1)[idx], err),4)
+
+}
+
+```
+
+
+### Example 1
+```{r}
+data1 <- read.csv('gt_2015.csv')
+head(data1)
+colnames(data1)[1] <- 'y'
+
+# variable backward selection
+full <- lm(y~., data=data1)
+backward <- step(full, direction="backward", trace = FALSE)
+backward
+
+# locally 최적 모델 fit
+lm_orig <- lm(y ~ AT + AP + AH + AFDP + GTEP + TIT + TAT + TEY + 
+    NOX, data=data1)
+summary(lm_orig)   # 변수들이 모두 유의함
+summary(lm_orig)$r.squared   # 0.7369346
+
+# 결측 처리할 행 10% 추출 및 sort
+set.seed(1)
+samp <- sort(sample(dim(data1)[1], dim(data1)[1]*0.1))
+
+# 결측 처리 전 true y 값 저장 및 lm fitted value값 저장
+true_y <- data1$y[samp]
+#b1<-fitted(lm_orig)[samp]
+
+# 결측 처리
+data1$y[samp] <- NA
+
+# 결측치 예측
+a1<-mylse(data1)[-1]
+
+compare1 <- cbind(a1, true_y)
+colnames(compare1) <- c('NA_filled', 'true_y')
+head(compare1,20)
+
+# # of iters
+mylse(data1)[1]
+system.time(mylse(data1))
+```
+
+
+
+### Example 2
+```{r}
+data2 <- read.csv('qsar_aquatic_toxicity.csv', header=F)
+head(data2)
+colnames(data2)[1] <- 'y'
+
+# variable backward selection
+full <- lm(y~., data=data2)
+backward <- step(full, direction="backward", trace = FALSE)
+backward
+
+# locally 최적 모델 fit
+lm_orig2 <- lm(y~., data=data2)
+summary(lm_orig2)  # 변수들이 모두 유의하며 R^2 값이 
+summary(lm_orig2)$r.squared   # 0.8565954
+
+# 결측 처리할 행 10% 추출 및 sort
+set.seed(1)
+samp2 <- sort(sample(dim(data2)[1], dim(data2)[1]*0.1))
+
+# 결측 처리 전 true y 값 저장 및 lm fitted value값 저장
+true_y2 <- data2$y[samp2]
+#b2<-fitted(lm_orig2)[samp2]
+
+# 결측 처리
+data2$y[samp2] <- NA
+
+# 결측치 예측
+a2<-mylse(data2)[-1]
+
+compare2 <- cbind(a2, true_y2)
+colnames(compare2) <- c('NA_filled', 'true_y')
+head(compare2,20)
+
+# # of iters
+mylse(data2)[1]
+system.time(mylse(data2))
+```
+
+## 3.
+
+### (1)
+```{r}
+
+mymulti <- function(p, q){
+  
+  #initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+  
+  # initial value
+  na <- 182
+  nb <- 60
+  nab <- 17
+  no <- 176
+  n <- na+nb+nab+no
+
+  p <- p
+  q <- q
+  r <- 1-p-q
+  
+  # log likelihood
+  lik <-  2 * no * log(r) + na * log(p^2 + 2*p*r) + nb * log(q^2 + 2*q*r) + nab * log(2*p*q)
+
+  while(err > threshold && niter <= maxiter){
+
+    # E-step
+    naa <- na*p^2/(p^2+2*p*r)
+    nao <- na*2*p*r/(p^2+2*p*r)
+    nbb <- nb*q^2/(q^2+2*q*r)
+    nbo <- nb*2*q*r/(q^2+2*q*r)
+
+    # save old p, q, log-likelihood
+    old_p <- p
+    old_q <- q
+    old_lik <- lik
+    
+    # M-step
+    # update p, q
+    p <- (naa + nao/2 + nab/2)/n
+    q <- (nbb + nbo/2 + nab/2)/n
+    
+    # update r, log-likelihood
+    r <- 1-p-q
+    lik <- 2 * no * log(r) + na * log(p^2 + 2*p*r) + nb * log(q^2 + 2*q*r) + nab * log(2*p*q)
+    
+    #update error and niter
+    #err <-  abs(c(p-old_p, q-old_q))
+    err <- abs(lik-old_lik)
+    niter <- niter+1
+    
+  }
+  
+  round(c(niter-1, p, q, r, err),4)
+  
+}
+```
+
+```{r}
+mymulti(0.5, 0.3)
+system.time(mymulti(0.5, 0.3))
+mymulti(0.4, 0.4)
+system.time(mymulti(0.4, 0.4))
+```
+
+### (2)
+```{r}
+mymulti2 <- function(pc, pi){
+  
+  #initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+  
+  # initial value
+  nc <- 85
+  ni <- 196
+  nt <- 341
+  n <- nc+ni+nt
+
+  pc <- pc
+  pi <- pi
+  pt <- 1-pc-pi
+
+  while(err > threshold && niter <= maxiter){
+
+    # E-step
+    nii <- ni*pi^2/(pi^2+2*pi*pt)
+    nit <- ni*2*pi*pt/(pi^2+2*pi*pt)
+    ncc <- nc*pc^2/(pc^2+2*pc*pi+2*pc*pt)
+    nci <- nc*2*pc*pi/(pc^2+2*pc*pi+2*pc*pt)
+    nct <- nc*2*pc*pt/(pc^2+2*pc*pi+2*pc*pt)
+
+    # save old pc, pi, pt
+    old_pc <- pc
+    old_pi <- pi
+    old_pt <- pt
+    
+    # M-step
+    # update pc, pi, pt
+    pc <- (2*ncc+nci+nct)/(2*n)
+    pi <- (2*nii+nci+nit)/(2*n)
+    pt <- 1-pc-pi
+    
+    #update error and niter
+    err <-  abs(c(pc-old_pc, pi-old_pi))
+    niter <- niter+1
+    
+  }
+  
+  round(c(niter-1, pc, pi, pt, err),4)
+}
+```
+
+```{r}
+mymulti2(1/3, 1/3)
+system.time(mymulti(1/3, 1/3))
+mymulti2(0.7, 0.1)
+system.time(mymulti(0.7, 0.1))
+```
+

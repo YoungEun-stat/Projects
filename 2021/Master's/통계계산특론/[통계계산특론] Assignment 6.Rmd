@@ -1,0 +1,119 @@
+---
+output: word_document
+---
+
+### 1.
+
+```{r}
+## INITIAL VALUES
+n = 10^4   # number of generation
+
+set.seed(1234)
+z = rnorm(n)
+u = runif(n)
+
+# function
+t_y = function(y, r){
+     a = r - (1/3)
+     b = 1/sqrt(9*a)
+     result = a*(1+b*y)^3
+     return(result)
+}
+t_y = Vectorize(t_y)
+
+func <- function (r){
+
+  a = r - (1/3)
+  tfunc = t_y(z, r)
+  z = z[(tfunc > 0)]
+  u = u[(tfunc > 0)]
+  tfunc = tfunc[(tfunc > 0)]  
+  
+  # q(z)/e(z)
+  compare = exp(((z^2)/2) + a*log(tfunc/a) - tfunc + a)
+  # u<=q(z)/e(z)가 true인 것의 index
+  keep = (1:length(tfunc))[(u <= compare)]
+  
+  # accepted value
+  x = tfunc[keep]	
+  # acceptance probability
+  print(length(x)/n) 
+  
+  # sort z
+  z = sort(z)
+  # plot envelope
+  plot(z,exp(-(z^2)/2),type="l")
+  # plot target
+  points(z,exp(a*log(t_y(z, r)/a) - t_y(z, r) + a),type="l")
+  
+  # compare with real gamma distribution
+  sorted_sample <- sort(tfunc)   # v = g(z,r)
+  true <- sort(rgamma(n, r, 1))   # random variables from gamma function
+  qqplot(sorted_sample, true)   # qqplot
+  abline(a = 0, b = 1, col = "red", lwd = 2)   # y=x line
+  
+}
+
+# change r
+r_list = c(1, 2, 4, 10, 20)
+for(r in r_list){
+  func(r)
+}
+```
+
+### 2. 
+
+```{r}
+# initial value
+x = c(8,3,4,3,1,7,2,6,2,7)
+n = 10^4
+
+set.seed(1234)
+d = rlnorm(n,log(4),0.5)   # samples from distribution of lambda
+u = runif(n)
+
+# log likelihood ratio of lambda|x and mean(x)|x
+log_lik <- function(d){sum(dpois(x,d,log=T))-sum(dpois(x,mean(x),log=T))}
+compare = sapply(d, log_lik)
+# likelihood ratio of lambda|x and mean(x)|x
+compare = exp(compare)
+# u<=likelihood ratio가 true인 것의 index
+keep = (1:n)[u <= compare]
+
+# keep lambda(=draw from the posterior)
+kept_lambda = d[keep]
+# acceptance probability
+print(length(kept_lambda)/n) 
+
+# plot
+lambda=seq(0,20,length.out=10^4)
+
+# envelope(=f(lambda)*L(4.3|x))
+y1 = dlnorm(lambda,log(4),0.5)*prod(dpois(x,mean(x)))
+plot(lambda,y1,type="l")
+polygon(lambda, y1, col='gray')
+
+# unormalized posterior
+y2 = dlnorm(lambda,log(4),0.5)*sapply(lambda,function(d){prod(dpois(x,d))})
+lines(lambda,y2,lty=2)
+polygon(lambda, y2, col='blue')
+
+abline(v=3.5, lwd=2, col='red')
+
+# posterior distribution
+plot(density(kept_lambda), col = 'black', lwd=2, main = 'posterior distribution')
+# posterior statistics
+summary(kept_lambda)
+```
+
+
+
+
+
+
+
+
+
+
+
+

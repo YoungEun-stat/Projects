@@ -1,0 +1,105 @@
+---
+output: word_document
+---
+
+## 1.
+
+```{r}
+library(VGAM)
+
+# initial value
+m = 100000
+n = 5000
+
+set.seed(1)
+random_normal = rnorm(m)
+random_slash = rslash(m)
+
+# weight when target function is slash distribution
+w1 = function(x){
+     result = dslash(x)/dnorm(x)
+     result = result/sum(result)
+     return(result)
+}
+
+# weight when target function is normal distribution
+w2 = function(x){
+     result = dnorm(x)/dslash(x)
+     result = result/sum(result)
+     return(result)
+}
+
+# calculate weights for resampling
+weights1 = w1(random_normal)  # envelope: normal
+weights2 = w2(random_slash)  # envelope: slash
+
+# resample
+y = sample(random_normal, n, replace=TRUE, prob=weights1)
+x = sample(random_slash, n, replace=TRUE, prob=weights2)
+
+# result
+par(mfrow=c(1,2))
+
+# standard normal density obtained via SIR with a slash distribution envelope
+hist(x,freq=FALSE,breaks=seq(-7,7,by=0.25),main="Histogram of draws",
+  ylab="Normal density")
+points(seq(-10,10,by=0.01),dnorm(seq(-10,10,by=0.01)), type="l")
+
+# slash density obtained via SIR with a normal distribution envelope
+hist(y,freq=FALSE,breaks=seq(-7,7,by=0.25),main="Histogram of draws",
+  ylab="Slash density")
+points(seq(-10,10,by=0.01),dslash(seq(-10,10,by=0.01)), type="l")
+```
+
+## 2.
+
+```{r}
+# initial value
+x = c(8,3,4,3,1,7,2,6,2,7)
+m = 10^4    # number of generation
+
+#################### SIR ####################
+# initial value
+set.seed(1234)
+lambda = rlnorm(m,log(4),0.5)    # samples from distribution of lambda
+
+# likelihood function
+lik = function(d){prod(dpois(x,d))}  
+# calculate weights for resampling
+weights = sapply(lambda, lik)
+
+n = 1000    # number of resampling
+# resampled lambda
+sampled = sample(lambda, n, replace=TRUE, prob=weights)   
+
+
+#################### Rejection Sampling ####################
+# initial value
+set.seed(1234)
+lambda = rlnorm(m,log(4),0.5)    # samples from distribution of lambda
+u = runif(m)
+
+# log likelihood ratio of lambda|x and mean(x)|x
+log_lik = function(d){sum(dpois(x,d,log=T))-sum(dpois(x,mean(x),log=T))}
+compare = sapply(lambda, log_lik)
+# likelihood ratio of lambda|x and mean(x)|x
+compare = exp(compare)
+# u<=likelihood ratio가 true인 것의 index
+keep = (1:m)[u <= compare]
+
+# keep lambda(=draw from the posterior)
+kept_lambda = lambda[keep]
+# acceptance probability
+print(length(kept_lambda)/m) 
+
+
+#################### compare plots ####################
+plot(density(kept_lambda), col = 'black', lwd=2, main = 'posterior distribution')
+lines(density(sampled), col = 'red', lwd=2)
+legend('topright', legend=c('Rejection Sampling', 'SIR'), fill=c('black', 'red'), border='white')
+```
+
+
+
+
+

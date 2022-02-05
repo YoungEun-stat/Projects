@@ -1,0 +1,376 @@
+---
+output: word_document
+---
+
+### 데이터 로드 및 전처리 ###
+```{r}
+data <- read.csv('baseball.txt', sep=' ')
+#summary(data)
+
+data$freeagent <- factor(data$freeagent)
+data$arbitration <- factor(data$arbitration)
+data$logsalary <- log(data$salary)
+data <- data[,-1]
+
+head(data)
+str(data)
+```
+
+
+### 1. leaps 패키지를 이용한 AIC가 최소가 되는 모델 찾기 ###
+```{r}
+library(leaps)
+
+all_regression<-
+    regsubsets(logsalary ~. ,
+               data = data,
+               nvmax = 27,      # 최대 허용 변수 개수
+               nbest = 1,       # 변수 개수 당 가장 좋은 모델 1개씩만 반환
+               method = "exhaustive")  # 모든 가능한 조합 고려
+
+summary_all<-summary(all_regression)
+summary_all$cp
+# 뽑힌 모델 27개의 AIC 구하기
+aic=NULL
+
+for (i in 1:27){
+  coef_best <- (coef(all_regression, i)[-1])
+  label <- gsub("1","",labels(coef_best))
+  logsalary <- data['logsalary']
+
+  best_data = as.data.frame(cbind(data[label], logsalary))
+  #str(best_data)
+  best_lm <- lm(logsalary~., data=best_data)
+  aic[i] = extractAIC(best_lm)[2]
+}
+
+aic
+
+# 가장 작은 AIC를 가지는 모델의 index 추출
+min_index <- which.min(aic)
+
+# 위에서 얻은 index로 재적합
+coef_best <- (coef(all_regression, min_index)[-1])
+label <- gsub("1","",labels(coef_best))
+logsalary <- data['logsalary']
+
+best_data = as.data.frame(cbind(data[label], logsalary))
+str(best_data)
+best_lm <- lm(logsalary~., data=best_data)
+summary(best_lm)
+
+# AIC
+extractAIC(best_lm)   
+
+# 소요 시간
+print(system.time( regsubsets(logsalary ~. ,
+               data = data,
+               nvmax = 27,      # 최대 허용 변수 개수
+               nbest = 1,       # 변수 개수 당 가장 좋은 모델 1개씩만 반환
+                 method = "exhaustive")))
+```
+
+
+### 2. step 함수를 이용한 AIC가 최소가 되는 모델 찾기 ###
+```{r}
+### backward elimination
+full <- lm(logsalary~., data=data)
+backward <- step(full, direction="backward", trace = FALSE)
+backward
+
+# 소요 시간
+print(system.time(step(full, direction="backward", trace = FALSE)))
+
+
+### Forward selection
+intercept <- lm(logsalary~1, data=data)
+forward <- step(intercept, direction='forward', scope=formula(full), trace = FALSE)
+forward
+
+# 소요 시간
+print(system.time(step(intercept, direction='forward', scope=formula(full), trace = FALSE)))
+```
+
+
+### 3. Genetic Algorithm을 이용한 AIC가 최소가 되는 모델 찾기###
+
+```{r}
+lm1 <- lm(logsalary ~ ., data = data)
+
+########## x, y 분리 ##########
+x <- model.matrix(lm1)[,-1]
+y <- model.response(model.frame(lm1))
+
+########## AIC를 계산하는 함수 ##########
+func1 <- function(selected){
+  # selected된 feature의 index 추출
+  index <- which(selected==1)
+  # X desigh matrix 생성
+  X <- cbind(1, x[,index])
+  # y~X lm fit
+  model <- lm.fit(X, y)
+  class(model) <- "lm"
+  # AIC 값 반환
+  -extractAIC(model)[2]
+  }
+
+########## GA 알고리즘 적용 ##########
+library(GA)
+GA <- ga("binary", 
+         fitness = func1, 
+         nBits = ncol(x), 
+         maxiter = 1000, 
+         names = colnames(x), 
+         monitor=FALSE, 
+         seed = 42)
+summary(GA)
+
+# AIC optimize 과정 plot
+plot(GA)
+
+# optimize 결과 선택된 변수  
+selection <- GA@solution
+
+# 위에서 선택된 변수만을 갖고 다시 fit
+lm2 <- lm(logsalary ~ ., 
+           data = data.frame(logsalary = y, x[,selection==1]))
+summary(lm2)
+
+#AIC
+extractAIC(lm2)
+
+# 소요 시간
+print(system.time(ga("binary", 
+         fitness = func1, 
+         nBits = ncol(x), 
+         maxiter = 1000, 
+         names = colnames(x), 
+         monitor=FALSE, 
+         seed = 42)))
+```
+
+
+### 4. Simulated Annealing을 이용한 AIC가 최소가 되는 모델 찾기 ###
+
+```{r}
+library(optimization)
+
+########## AIC를 계산하는 함수 ##########
+func2 <- function(string){
+  selection<- round(string)
+  index <- which(selection==1)
+  X <- cbind(1, x[,index])
+  mod <- lm.fit(X, y)
+  class(mod) <- "lm"
+  -extractAIC(mod)[2]
+}
+
+
+########## SA 알고리즘 적용 ##########
+###### optim_sa 사용 ######
+### ex1
+set.seed(42)
+start1 <- rbinom(27,1,0.5)  # starting value 설정
+
+ro_sa1 <- optim_sa(fun = func2,
+                  start = start1,
+                  lower = rep(0, 27),
+                  upper = rep(1, 27),
+                  trace = TRUE,
+                  maximization = TRUE,
+                  control = list(t0 = 1000,
+                            nlimit = 500,
+                            t_min = 0.1,
+                            dyn_rf = FALSE,
+                            rf = 1,
+                            r = 0.9,
+                            maxgood = 1000
+                  )
+         )   # maximize function
+
+# plot
+plot(ro_sa1)
+data
+# feature selection 결과
+best1 <- round(ro_sa1$par)
+
+# 선택된 변수만을 가지고 데이터프레임 생성 및 lm fit
+best_data = as.data.frame(cbind(data[,best1==1], logsalary))
+str(best_data)
+best_lm <- lm(logsalary~., data=best_data)
+summary(best_lm)
+
+# AIC
+extractAIC(best_lm)
+
+
+# 소요 시간
+print(system.time(optim_sa(fun = func2,
+                  start = start1,
+                  lower = rep(0, 27),
+                  upper = rep(1, 27),
+                  trace = TRUE,
+                  maximization = TRUE,
+                  control = list(t0 = 1000,
+                            nlimit = 500,
+                            t_min = 0.1,
+                            dyn_rf = FALSE,
+                            rf = 1,
+                            r = 0.9,
+                            maxgood = 1000
+                  )
+         )   # maximize function
+))
+
+### ex2
+set.seed(42)
+start2 <- rbinom(27,1,0.4)  # starting value 설정
+
+ro_sa2 <- optim_sa(fun = func2,
+                  start = start2,
+                  lower = rep(0, 27),
+                  upper = rep(1, 27),
+                  trace = TRUE,
+                  maximization = TRUE,
+                  control = list(t0 = 1000,
+                            nlimit = 500,
+                            t_min = 0.1,
+                            dyn_rf = FALSE,
+                            rf = 1,
+                            r = 0.9,
+                            maxgood = 1000
+                  )
+         )   # maximize function
+
+# plot
+plot(ro_sa2)
+
+# feature selection 결과
+best2 <- round(ro_sa2$par)
+
+# 선택된 변수만을 가지고 데이터프레임 생성 및 lm fit
+best_data = as.data.frame(cbind(data[,best2==1], logsalary))
+str(best_data)
+best_lm <- lm(logsalary~., data=best_data)
+summary(best_lm)
+
+# AIC
+extractAIC(best_lm)
+
+
+# 소요 시간
+print(system.time(optim_sa(fun = func2,
+                  start = start2,
+                  lower = rep(0, 27),
+                  upper = rep(1, 27),
+                  trace = TRUE,
+                  maximization = TRUE,
+                  control = list(t0 = 1000,
+                            nlimit = 500,
+                            t_min = 0.1,
+                            dyn_rf = FALSE,
+                            rf = 1,
+                            r = 0.9,
+                            maxgood = 1000
+                  )
+         )   # maximize function
+))
+
+
+########## AIC를 계산하는 함수 ##########
+func3 <- function(string){
+  selection<- round(string)
+  index <- which(selection==1)
+  X <- cbind(1, x[,index])
+  mod <- lm.fit(X, y)
+  class(mod) <- "lm"
+  extractAIC(mod)[2]
+}
+
+########## SA 알고리즘 적용 ##########
+########## GenSA 사용 ##########
+library(GenSA)
+### ex1
+gensa <- GenSA(par = as.numeric(rbinom(27, 1, 0.5)),
+               lower = rep(0, 27), 
+               upper = rep(1, 27), 
+               fn=func3,
+               control=list(
+                 trace.mat = TRUE,
+                 seed = 42)
+               )   # minimize function
+
+print(c(gensa$value, gensa$counts))
+print(names(data[round(gensa$par)]))
+
+best1 <- round(gensa$par)
+
+# 선택된 변수만을 가지고 데이터프레임 생성 및 lm fit
+best_data = as.data.frame(cbind(data[,best1==1], logsalary))
+str(best_data)
+best_lm <- lm(logsalary~., data=best_data)
+summary(best_lm)
+
+# plot
+b <- aggregate(gensa$trace.mat[,3], by=list(gensa$trace.mat[,1]), mean)
+names(b) <- c('nb.steps', 'value')
+c <- aggregate(gensa$trace.mat[,4], by=list(gensa$trace.mat[,1]), min)
+names(c) <- c('nb.steps', 'value')
+plot(b, type='l',lwd=3,  ylim = c(-420, -400))
+par(new=TRUE)
+plot(c, type='l',lwd = 2, ylim = c(-420, -400), col='red')
+
+
+# 소요 시간
+print(system.time( GenSA(par = as.numeric(rbinom(27, 1, 0.5)),
+               lower = rep(0, 27), 
+               upper = rep(1, 27), 
+               fn=func3,
+               control=list(
+                 trace.mat = TRUE,
+                 seed = 42)
+               )   ))
+
+
+### ex2
+gensa2 <- GenSA(par = as.numeric(rbinom(27, 1, 0.6)),
+               lower = rep(0, 27), 
+               upper = rep(1, 27), 
+               fn=func3,
+               control=list(
+                 trace.mat = TRUE,
+                 seed = 42)
+               )
+
+print(round(gensa2$par))
+print(c(gensa2$value, gensa2$counts))
+
+best2 <- round(gensa2$par)
+
+# 선택된 변수만을 가지고 데이터프레임 생성 및 lm fit
+best_data = as.data.frame(cbind(data[,best2==1], logsalary))
+str(best_data)
+best_lm <- lm(logsalary~., data=best_data)
+summary(best_lm)
+
+# plot
+b <- aggregate(gensa2$trace.mat[,3], by=list(gensa2$trace.mat[,1]), mean)
+names(b) <- c('nb.steps', 'value')
+c <- aggregate(gensa2$trace.mat[,4], by=list(gensa2$trace.mat[,1]), min)
+names(c) <- c('nb.steps', 'value')
+plot(b, type='l',lwd=3,  ylim = c(-420, -360))
+par(new=TRUE)
+plot(c, type='l',lwd = 2, ylim = c(-420, -360), col='red')
+
+# 소요 시간
+print(system.time( GenSA(par = as.numeric(rbinom(27, 1, 0.6)),
+               lower = rep(0, 27), 
+               upper = rep(1, 27), 
+               fn=func3,
+               control=list(
+                 trace.mat = TRUE,
+                 seed = 42)
+               )   ))
+```
+
+

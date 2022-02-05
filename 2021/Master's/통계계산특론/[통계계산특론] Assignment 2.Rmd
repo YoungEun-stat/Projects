@@ -1,0 +1,375 @@
+---
+output: word_document
+---
+
+```{r}
+### target function 1 ###
+f1 <- function(x){
+  (log(x)/(1+x))
+}
+
+### target function 2 ###
+f2 <- function(x){
+  (x-1)^2
+}
+
+### target function 3 ###
+f3 <- function(x){
+  ((4*log(x^2)*x-sin(cos(x)))/(x^2+3*x))
+}
+```
+
+
+### 1. Newton Raphson Method 구현 ###
+```{r}
+library(numDeriv)
+
+newton.raphson <- function(f, a) {
+  
+	#get the function as an input
+	f<-match.fun(f)
+	ff<-function(x) f(x)
+	
+	#initial settings	
+  x0 <- a
+  maxiter <- 1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+  
+  while ( niter <= maxiter && err >= threshold){
+    dx <- genD(func=ff, x=x0)$D[1] # first-order derivative f'(x0)
+    d2x <- genD(func=ff, x=x0)$D[2]  # second-order derivative f''(x0)
+    
+    if( is.na(d2x)==TRUE ){
+      return('Error: second derivative is 0')
+      break
+    }
+    
+    x1 <- x0 - (dx / d2x) # Calculate next value x1
+    
+		#update x
+    oldx0 <- x0
+    x0 <- x1
+
+    #update error and niter
+    err = abs(x0 - oldx0)
+    niter<-niter+1
+    #print(paste(niter,x0,err,sep="  "))
+  }
+	
+	# show result (niter, starting point, x0, f(x0), error)
+  return(round(c(niter, a, x0, ff(x0), err),4))
+}
+
+newton.raphson(f1, 0.1)
+system.time(newton.raphson(f1, 0.1))
+newton.raphson(f2, 5)
+system.time(newton.raphson(f2, 5))
+newton.raphson(f3, 0.1)
+system.time(newton.raphson(f3, 0.1))
+```
+
+
+### 2. Secant Method 구현 ###
+```{r}
+secant <- function(f, a, b) {
+  
+	#get the function as an input
+	f<-match.fun(f)
+	ff<-function(x) f(x)
+	
+	#initial settings	
+  x0 <- a
+  x1 <- b
+  maxiter <- 1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+
+
+  while ( niter <= maxiter && err >= threshold){
+    
+    dx0 <- genD(func=ff,x=x0)$D[1] # first-order derivative f'(x0)
+    dx1 <- genD(func=ff,x=x1)$D[1] # first-order derivative f'(x1)
+    
+    x2 <- x1 - dx1 * ((x1-x0) / (dx1-dx0)) # Calculate next value x2
+    
+		#update x
+    oldx0 <- x0
+    x0 <- x1
+    x1 <- x2
+
+    #update error and niter
+    err = abs(x1 - x0)
+    niter<-niter+1
+    #print(paste(niter,x0,err,sep="  "))
+  }
+	
+	# show result (niter, starting points, x0, x1, f(x0), f(x1), error)
+  return(round(c(niter, a, b, x0, x1, ff(x0), ff(x1), err),4))
+}
+
+secant(f1, 0.1, 0.2)
+system.time(secant(f1, 0.1, 0.2))
+secant(f2, 5, 10)
+system.time(secant(f2, 5, 10))
+secant(f3, 0.1, 0.2)
+system.time(secant(f3, 0.1, 0.2))
+
+```
+
+
+### 2.1 ###
+
+#### a. ####
+```{r}
+obs = c(1.77,-0.23,2.76,3.80,3.47,56.75,-1.34,4.24,-2.44, 3.29,3.71,-2.40,4.53,-0.07,-1.05,-13.87,-2.53,-1.75,0.27,43.21)
+
+### Compute log likelihood ###
+loglik = c()
+log.lik=function(theta){
+  # vector in 
+  for(i in 1:length(theta)){
+    loglik[i] = sum(dcauchy(obs, location = theta[i], scale = 1, log = T))
+  }
+  # vector out
+  return(loglik)
+}
+
+### Plot log likelihood function ###
+x = seq(from=-100, to=100, by=0.1)
+y = log.lik(x)
+
+plot(x, y, type='l')
+
+### Use Newton Raphson Method to get MLE ###
+# starting points
+a<- c(-11, -1, 0, 1.5, 4, 4.7, 7, 8, 38)
+
+for (i in a){
+  newton <- newton.raphson(log.lik, i)
+  time <- system.time(newton.raphson(log.lik, i))
+  print(newton)
+  print(time)
+}
+
+# starting point: mean
+mean(obs)
+newton.raphson(log.lik, mean(obs))
+system.time(newton.raphson(log.lik, mean(obs)))
+```
+
+
+### b. ###
+```{r}
+### Bisection 함수 구현 ###
+bisec<-function(f,a,b){
+  
+	#get the function as an input
+	f<-match.fun(f)
+	ff<-function(x) f(x)
+	
+	#initial settings
+	maxiter<-1000
+	threshold<-10^(-10)
+	err<-1
+	niter<-0
+	x0<-(a+b)/2
+
+	while ( niter<=maxiter && err >= threshold){
+		#update interval
+		if (genD(ff, a)$D[,1]*genD(ff, x0)$D[,1] <= 0)	{b<-x0}
+		else	{a<-x0}
+		
+		#update x
+		oldx0<-x0
+		x0<-(a+b)/2
+		
+		#update error and niter
+		err<-abs(oldx0-x0)
+		niter<-niter+1
+		# to see each step
+		#print(paste(niter,x0,err,sep="  "))
+
+	}
+  
+	# show result (niter, starting point, x0, f(x0), error)
+  return(round(c(niter, x0, ff(x0), err),4))
+}
+
+### Use Bisection Method to get MLE ###
+bisec(log.lik, -1, 1)
+system.time(bisec(log.lik, -1, 1))
+bisec(log.lik, 2, 5)
+system.time(bisec(log.lik, 2, 5))
+bisec(log.lik, -2, 0)
+system.time(bisec(log.lik, -2, 0))
+bisec(log.lik, -5, -1)
+system.time(bisec(log.lik, -2, 0))
+bisec(log.lik, 7, 9)
+system.time(bisec(log.lik, 7, 9))
+```
+
+#### d. ####
+
+```{r}
+### Use Secant Method to get MLE ###
+secant(log.lik, -2, -1)
+system.time(secant(log.lik, -2, -1))
+secant(log.lik, -3, 3)
+system.time(secant(log.lik, -3, 3))
+secant(log.lik, 0, 5)
+system.time(secant(log.lik, 0, 5))
+secant(log.lik, -2, 1)
+system.time(secant(log.lik, -2, 1))
+
+#system.time(secant(log.lik, 7, 9))
+```
+
+
+
+#### e. ####
+```{r}
+set.seed(1)
+obs2 = rnorm(20, 5, 1)
+mean(obs2)
+
+### Compute log likelihood ###
+loglik2 = NULL
+log.lik2 <- function(theta){
+  # vector in
+  for(i in 1:length(theta)){
+    loglik2[i]= sum(dnorm(obs2, mean = theta[i], sd = 1, log = T)) 
+  }
+  # vector out
+  return(loglik2)
+}
+
+### Plot log-likelihood function ###
+x = seq(from=-10, to=20, by=0.1)
+y = log.lik2(x)
+
+plot(x, y, type='l')
+
+### Use Newton Raphson Method to get MLE ###
+# starting points
+a<- c(-11, -1, 0, 1.5, 4, 4.7, 7, 8, 38)
+
+for (i in a){
+  newton <- newton.raphson(log.lik2, i)
+  time <- system.time(newton.raphson(log.lik2, i))
+  print(newton)
+  print(time)
+}
+
+mean(obs2)
+newton.raphson(log.lik2, mean(obs2))
+system.time(newton.raphson(log.lik2, mean(obs2)))
+
+### Use Bisection Method to get MLE ###
+bisec(log.lik2, -1, 1)
+system.time(bisec(log.lik2, -1, 1))
+bisec(log.lik2, 2, 5)
+system.time(bisec(log.lik2, 2, 5))
+bisec(log.lik2, -2, 0)
+system.time(bisec(log.lik2, -2, 0))
+bisec(log.lik2, -5, -1)
+system.time(bisec(log.lik2, -2, 0))
+bisec(log.lik2, 7, 9)
+system.time(bisec(log.lik2, -2, 0))
+
+### Use Secant Method to get MLE ###
+secant(log.lik2, -2, -1)
+system.time(secant(log.lik2, -2, -1))
+secant(log.lik2, -3, 3)
+system.time(secant(log.lik2, -3, 3))
+secant(log.lik2, 0, 5)
+system.time(secant(log.lik2, 0, 5))
+secant(log.lik2, -2, 1)
+system.time(secant(log.lik2, -2, 1))
+secant(log.lik2, 7, 9)
+system.time(secant(log.lik2, 7, 9))
+```
+
+iteration과 speed 비교
+
+
+### 2.2 ###
+#### a. ####
+```{r}
+obs3 = c(3.91, 4.85, 2.28, 4.06, 3.70, 4.04, 5.46, 3.53, 2.28, 1.96, 2.53, 3.88, 2.22, 3.47, 4.82, 2.46, 2.99, 2.54, 0.52, 2.50)
+
+### Compute log likelihood ###
+loglik3 = NULL
+log.lik3 <- function(theta){   
+  # vector in 
+  for(i in 1:length(theta)){
+    loglik3[i]= sum(log((1 - cos(obs3 - theta[i]))/(2*pi)))
+  }
+  # vector out
+  return(loglik3)
+}
+
+### Plot log-likelihood function ###
+x = seq(from=-pi, to=pi, by=0.1)
+y <- log.lik3(x)
+
+plot(x, y, type='l')
+```
+
+
+#### b. ####
+```{r}
+mme <- asin(mean(obs3)-pi)
+mme
+```
+
+#### c. ####
+```{r}
+newton.raphson(log.lik3, mme)
+system.time(newton.raphson(log.lik3, mme))
+newton.raphson(log.lik3, -2.7)
+system.time(newton.raphson(log.lik3, -2.7))
+newton.raphson(log.lik3, 2.7)
+system.time(newton.raphson(log.lik3, 2.7))
+```
+
+
+
+#### d. ####
+
+```{r}
+x <- seq(-pi, pi, len=200)
+result = NULL
+
+for (i in 1:length(x)){
+  result = round(rbind(result, newton.raphson(log.lik3, x[i])),4)
+}
+
+colnames(result) <- c('niter', 'a', 'x0', 'f(x0)', 'err')
+result <- as.data.frame(result)
+
+sol <- split(result$a, result$x0)
+sol
+sol2 <- unique(result['f(x0)'])
+sol2
+```
+
+#### e. ####
+
+```{r}
+min <- sapply(sol, min)
+max <- sapply(sol, max)
+minmax <- as.data.frame(cbind(min, max))
+
+point1 <- c()
+point2 <- c()
+
+for (i in 1:(nrow(minmax)-1)){
+  point2 <- append(point2, minmax[(i+1), 'min'])
+  point1 <- append(point1, minmax[i, 'max'])
+}
+
+cbind(point1, point2)
+```
