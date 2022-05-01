@@ -1,0 +1,64 @@
+---
+title: "hw3_변수누락_도구변수"
+output: html_document
+---
+
+## 1. 
+```{r}
+library(MASS)  	
+beta1.hat.x2.omitted <- function(n, rho) {
+  set.seed(1) 
+  Sigma = matrix(c(1, rho, rho, 1),2,2)
+  Mu = rep(0,2)
+  
+  X = mvrnorm(n, Mu, Sigma)
+  x1 = X[,1];x2 = X[,2]
+  u  = rnorm(n)
+  
+  y = 1 + x1 + x2 + u
+  ols_misspecified = lm(y ~ x1)
+  
+  return(ols_misspecified$coef[2]) 
+}
+
+rho = 0.5
+beta1_100 = beta1.hat.x2.omitted(100, rho)
+beta1_1000 = beta1.hat.x2.omitted(1000, rho)
+beta1_10000 = beta1.hat.x2.omitted(10000, rho)
+beta1_100000 = beta1.hat.x2.omitted(100000, rho)
+beta1_1000000 = beta1.hat.x2.omitted(1000000, rho)
+
+beta1_100; beta1_1000; beta1_10000; beta1_100000; beta1_1000000
+```
+
+## 2.
+```{r}
+
+library(AER)
+data = read.csv('ciga.csv')
+attach(data)
+
+sale.tax = (taxs - tax)/cpi
+perinc = income/pop/cpi
+log.inc = log(perinc)
+
+dlogQ = log_Q[year==1995] - log_Q[year==1985]
+dlogP = log_P[year==1995] - log_P[year==1985]
+dlog.inc = log.inc[year==1995] - log.inc[year==1985]
+dsale.tax = sale.tax[year==1995] - sale.tax[year==1985]
+
+dlm = ivreg(dlogQ ~ dlogP + dlog.inc | dsale.tax + dlog.inc)
+b = summary(dlm)$coef[2,1]; b
+se = summary(dlm)$coef[2,2]; se
+c(b-1.96*se, b+1.96*se)
+
+
+ summary(dlm)
+
+library(AER)
+ivreg(log_Q ~ log_P + log.inc|sale.tax+log.inc) 
+```
+
+
+
+
