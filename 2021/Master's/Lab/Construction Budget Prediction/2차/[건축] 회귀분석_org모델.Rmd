@@ -1,0 +1,324 @@
+---
+title: "건축과 미니프로젝트"
+date: '2021. 12. 30 (목) '
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    theme: flatly
+---
+
+데이터 중, 지하층수/지상층수에 ERROR 값이 있어 이를 엑셀상에서 적절하게 변경(ex. 지하1층 -> 1)하여 분석을 진행하였습니다. 
+
+# 데이터 불러오기
+```{r}
+library(readxl)   # 엑셀 자료를 불러오기 위한 library
+
+data <- as.data.frame(read_excel('건설경영연구실_분석데이터.xlsx', skip = 6, col_types='text', sheet=1))[3:27]   # No.열은 필요없다고 판단하여 2번째 열부터 읽기
+
+######################불러온 데이터 확인#########################
+head(data)
+dim(data)   # 변수 : 25개, case : 2686건
+```
+
+
+# 데이터 전처리
+```{r}
+#################### 분석에 사용되지 않는 열 제거 ######################
+data_new <- data[, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 25)]
+
+#################### 설명변수 결측치 제거 ######################
+data_new_x_na <- na.omit(data_new[, -10])
+data_new2 <- data_new[c(rownames(data_new_x_na)),]
+sum((is.na(data_new2)))  # 반응변수 결측치 20개
+
+###################### 데이터 type 변경 #########################
+# 현재 모두 character type으로 입력되어있음
+str(data_new2)
+
+# 수치형 변수 수치형으로 변환
+data_new2[,6:10] <- lapply(data_new2[,6:10], as.numeric)
+
+# 문자형 변수 범주형으로 변환
+data_new2[,1:5] <- lapply(data_new2[,1:5], as.factor)
+
+# 변환 후 변수 type 확인하기
+str(data_new2)
+
+#################### 반응변수 결측치 제거 ######################
+data_new_x_na <- na.omit(data_new2)
+data_new22 <- data_new2[c(rownames(data_new_x_na)),]
+sum((is.na(data_new22)))  # 반응변수 결측치 20개
+
+sum(is.na(data_new22))
+dim(data_new22)
+```
+
+
+# EDA
+```{r} 
+#################### outlier 제거 ####################
+new_data <- cbind(data_new22)
+rownames(new_data)=NULL   # index 초기화
+
+plot(new_data$`연면적당 건축공사비`)     # => 우측 상단에 outlier 확인  
+which(new_data[,'연면적당 건축공사비'] > 150000000)   # outlier값 행 번호 확인
+
+# 이상치 제거
+new_data <- new_data[-2015,]
+plot(new_data$`연면적당 건축공사비`) 
+
+# y(반응변수) 0 값 처리
+zero_y = which(new_data$`연면적당 건축공사비`==0)
+new_data <- new_data[-zero_y,]
+
+#################### y의 정규성 확인 #################### 
+# y의 정규성 확인
+shapiro.test(new_data$`연면적당 건축공사비`)   # Shapiro-Wilk 검정
+
+# target 변수 분포 확인
+hist(new_data$`연면적당 건축공사비`)    
+
+library(moments)
+# 왜도
+skewness(new_data$`연면적당 건축공사비`)
+# 첨도
+kurtosis(new_data$`연면적당 건축공사비`)  # 왜도와 첨도 모두 높은 값이 나옴
+
+# 변환한 변수 분포 확인
+hist(log(new_data$`연면적당 건축공사비`)) # 오른쪽으로 꼬리가 긴 skewed distn. => log 변환
+plot(log(new_data$`연면적당 건축공사비`))
+
+# 왜도
+skewness(log(new_data$`연면적당 건축공사비`))
+# 첨도
+kurtosis((log(new_data$`연면적당 건축공사비`)))
+
+```
+
+
+# 모델링1 ('주용도의 세부용도' 변수 포함)
+```{r}
+new_data_2 <- cbind(new_data)
+new_data_2$`연면적당 건축공사비`<-log(new_data_2$`연면적당 건축공사비`)
+colnames(new_data_2)
+rownames(new_data_2)=NULL   # index 초기화
+
+############################### feature selection ################################
+
+# Backward Elimination(후진제거법)
+full <- lm(`연면적당 건축공사비`~., data=new_data_2)
+backward <- step(full, direction="backward", trace = FALSE)
+# 모델 학습
+backward_lm <- lm(`연면적당 건축공사비` ~ 주건축구분 + `주용도의 세부용도` + 
+    신청기관_구분 + 특광역시도 + 연면적 + 지하층수 + 지상층수, data = new_data_2)
+summary(backward_lm) # R^2: 0.4994 / Adjusted R^2: 0.4744
+
+# forward selection(전진선택법)
+intercept <- lm(`연면적당 건축공사비`~ 1, data=new_data_2)
+forward <- step(intercept, direction='forward', scope=formula(full), trace = FALSE)
+# 모델 학습
+forward_lm <- lm(`연면적당 건축공사비` ~ `주용도의 세부용도` + 연면적 + 
+    지하층수 + 신청기관_구분 + 지상층수 + 주건축구분 + 특광역시도, data = new_data_2)
+summary(forward_lm)  # R^2: 0.4994 / Adjusted R^2: 0.4744
+
+## 동일한 결과를 보여줌
+## R^2: 0.4994 / Adjusted R^2: 0.4744
+
+par(mfrow=c(2,2))
+plot(forward_lm)
+
+## oulier가 보임
+# 제거하고 refit
+
+lm_final <- lm(`연면적당 건축공사비` ~ `주용도의 세부용도` + 연면적 + 
+    지하층수 + 신청기관_구분 + 지상층수 + 주건축구분 + 특광역시도, data = new_data_2[-c(1099, 944, 926, 1501, 823, 324, 522, 523, 603),])
+summary(lm_final)
+## R^2: 0.6228 / Adjusted R^2: 0.6039 
+
+par(mfrow=c(2,2))
+plot(lm_final)
+## (1) 잔차가 모두 -2~+3 안쪽으로 들어옴
+## (2) QQ-plot을 보았을 때 양 꼬리쪽이 정확히 들어맞지는 않음
+```
+
+# 결과1
+## Confidence interval
+```{r}
+data_2 <- data[, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 25)]
+
+# true값 불러오기
+data_org <- na.omit(data_2)
+#data_org <- data.frame(data_org[,10])
+data_org <- as.data.frame(as.numeric(data_org[,10]))
+
+# confidence interval 계산
+ci <- predict(lm_final, newdata = data_new22, interval = "confidence", level=0.95)
+ci <- as.data.frame(exp(ci))  # 역변환
+
+# 원래 index와 결합, true값과 fitted 값 비교
+y_notna_idx = as.data.frame(as.numeric(rownames(ci)))
+fitted <- round(cbind(data_org, ci), 2)
+fitted <- round(cbind(y_notna_idx, fitted), 2)
+colnames(fitted) <- c('index', 'orig_data', 'fitted_data', 'lower_ci_f', 'upper_ci_f')
+
+head(fitted)  # 상위 6개
+```
+
+
+```{r}
+# observed vs fitted value
+plot(log(fitted$orig_data), log(fitted$fitted_data), main="observed value vs fitted value")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+plot(log(fitted$orig_data), log(fitted$fitted_data), xlim=c(10, 18), ylim=c(10, 18), main="observed value vs fitted value in range[10,18]")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Prediction interval
+```{r}
+data_org_na <- data_new2[which(is.na((data_new2[,10]))),]
+
+# confidence interval 계산
+ci <- predict(lm_final, newdata = data_org_na, interval = "prediction", level=0.95)
+ci <- as.data.frame(exp(ci))  # 역변환
+
+# 원래 index와 결합, true값과 fitted 값 비교
+y_notna_idx = as.data.frame(as.numeric(rownames(ci)))
+predicted <- round(cbind(y_notna_idx, ci), 2)
+colnames(predicted) <- c('index', 'predicted_data', 'lower_ci_p', 'upper_ci_p')
+
+head(predicted)  # 상위 6개
+```
+
+## 결과 파일
+```{r}
+# 결합을 위한 index 설정
+data['index'] = c(1:nrow(data))
+
+# 파일 결합
+final_result <- merge(data, fitted, by='index',all.x = TRUE) 
+final_result <- merge(final_result, predicted, by='index', all.x = TRUE)
+head(final_result)  # 상위 6개
+
+# csv로 저정
+# 저장 경로: 이 rmd 파일 저장 경로와 동일
+final_result[is.na(final_result)]<-""   # 결측값 빈칸으로 표시
+write.csv(final_result, file='분석완료_org모델1.csv', row.names=FALSE)
+```
+
+
+# 모델링2 ('주용도의 세부용도' 변수 미포함)
+```{r}
+new_data_3 <- new_data[, -3]
+new_data_3$`연면적당 건축공사비`<-log(new_data_3$`연면적당 건축공사비`)
+colnames(new_data_3)
+rownames(new_data_3)=NULL   # index 초기화
+
+############################### feature selection ################################
+
+# Backward Elimination(후진제거법)
+full <- lm(`연면적당 건축공사비`~., data=new_data_3)
+backward <- step(full, direction="backward", trace = FALSE)
+# 모델 학습
+backward_lm <- lm(`연면적당 건축공사비` ~ 주용도 + 신청기관_구분 + 
+    특광역시도 + 부지면적 + 연면적 + 지상층수 + 지하층수, data = new_data_3)
+summary(backward_lm) # R^2: 0.4562 / Adjusted R^2: 0.4453
+
+# forward selection(전진선택법)
+intercept <- lm(`연면적당 건축공사비`~ 1, data=new_data_3)
+forward <- step(intercept, direction='forward', scope=formula(full), trace = FALSE)
+# 모델 학습
+forward_lm <- lm(`연면적당 건축공사비` ~ 연면적 + 지상층수 + 주용도 + 
+    지하층수 + 신청기관_구분 + 부지면적 + 특광역시도, data = new_data_3)
+summary(forward_lm) # R^2: 0.4562 / Adjusted R^2: 0.4453
+
+## 동일한 결과를 보여줌
+# R^2: 0.4562 / Adjusted R^2: 0.4453
+
+par(mfrow=c(2,2))
+plot(forward_lm)
+
+## oulier가 보임
+# 제거하고 refit
+
+lm_final_2 <- lm(`연면적당 건축공사비` ~ 연면적 + 지상층수 + 주용도 + 
+    지하층수 + 신청기관_구분 + 부지면적 + 특광역시도, data = new_data_3[-c(1099, 944, 1914, 1501, 926, 522, 523, 324, 603, 1994, 1902),])
+summary(lm_final_2)
+## R^2: 0.5931 / Adjusted R^2: 0.5849
+
+par(mfrow=c(2,2))
+plot(lm_final_2)
+## (1) 잔차가 모두 -3~+3 안쪽으로 들어옴
+## (2) QQ-plot을 보았을 때 양 꼬리쪽이 정확히 들어맞지는 않음
+```
+
+# 결과2
+## Confidence interval
+```{r}
+data_2 <- data[, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 25)]
+
+# true값 불러오기
+data_org <- na.omit(data_2)
+#data_org <- data.frame(data_org[,10])
+data_org <- as.data.frame(as.numeric(data_org[,10]))
+
+# confidence interval 계산
+ci <- predict(lm_final_2, newdata = data_new22[,-3], interval = "confidence", level=0.95)
+ci <- as.data.frame(exp(ci))  # 역변환
+
+# 원래 index와 결합, true값과 fitted 값 비교
+y_notna_idx = as.data.frame(as.numeric(rownames(ci)))
+fitted2 <- round(cbind(data_org, ci), 2)
+fitted2 <- round(cbind(y_notna_idx, fitted2), 2)
+colnames(fitted2) <- c('index', 'orig_data', 'fitted_data', 'lower_ci_f', 'upper_ci_f')
+
+head(fitted2)  # 상위 6개
+```
+
+
+```{r}
+# observed vs fitted value
+plot(log(fitted2$orig_data), log(fitted2$fitted_data), main="observed value vs fitted value")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+plot(log(fitted2$orig_data), log(fitted2$fitted_data), xlim=c(10, 20), ylim=c(10, 20), main="observed value vs fitted value in range[10,20]")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+
+## Prediction interval
+```{r}
+data_org_na <- data_new2[which(is.na((data_new2[,10]))),]
+
+# confidence interval 계산
+ci <- predict(lm_final_2, newdata = data_org_na, interval = "prediction", level=0.95)
+ci <- as.data.frame(exp(ci))  # 역변환
+
+# 원래 index와 결합, true값과 fitted 값 비교
+y_notna_idx = as.data.frame(as.numeric(rownames(ci)))
+predicted2 <- round(cbind(y_notna_idx, ci), 2)
+colnames(predicted2) <- c('index', 'predicted_data', 'lower_ci_p', 'upper_ci_p')
+
+head(predicted2)  # 상위 6개
+```
+
+
+## 결과 파일
+```{r}
+# 결합을 위한 index 설정
+data['index'] = c(1:nrow(data))
+
+# 파일 결합
+final_result2 <- merge(data, fitted2, by='index', all.x = TRUE) 
+final_result2 <- merge(final_result2, predicted2, by='index', all.x = TRUE)
+head(final_result2)  # 상위 6개
+
+# csv로 저정
+# 저장 경로: 이 rmd 파일 저장 경로와 동일
+final_result2[is.na(final_result2)]<-""   # 결측값 빈칸으로 표시
+write.csv(final_result2, file='분석완료_org모델2.csv', row.names=FALSE)
+```
+
+
