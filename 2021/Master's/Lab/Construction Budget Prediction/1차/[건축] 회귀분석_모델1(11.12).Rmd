@@ -1,0 +1,281 @@
+---
+title: "건축과 미니프로젝트"
+date: '2021. 11. 12 (금) '
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    theme: flatly
+---
+
+# 데이터 불러오기
+```{r}
+library(readxl)   # 엑셀 자료를 불러오기 위한 library
+
+data <- as.data.frame(read_excel('분석용.xlsx', skip = 6, col_types='text'))[2:26]   # No.열은 필요없다고 판단하여 2번째 열부터 읽기
+
+######################불러온 데이터 확인#########################
+
+head(data)
+
+dim(data)   # 변수 : 25개, case : 2686건
+```
+
+
+# 데이터 전처리
+```{r}
+#################### 분석에 사용되지 않는 열 제거 ######################
+data <- data[, c(1, 2, 3, 4, 5, 20, 21, 22, 23, 24, 25)]
+
+###################### 데이터 type 변경 #########################
+
+# 현재 모두 character type으로 입력되어있음
+
+# 수치형 변수 수치형으로 변환
+data[,6:10] <- lapply(data[,6:10], as.numeric)
+
+# 문자형 변수 범주형으로 변환
+data[,1:5] <- lapply(data[,1:5], as.factor)
+
+# 25번째 행은 문자형 변수이지만, 결측치가 있어 범주형변수로 바로 변환이 불가 -> 결측치부터 채워주기 : 최빈값 사용
+length(which(is.na(data[11])))  # 결측치 13개
+table(data[,11])  # 최빈값 일반설계공모
+data[is.na(data[,11]), 11] <- '일반설계공모'    # 결측치에 '일반설계공모' 채워주기
+data[,11] <-as.factor(data[,11])
+
+# 변환 후 변수 type 확인하기
+str(data)
+
+#################### 설명변수의 결측치 확인 #####################
+
+# 각 열에 대한 결측치 개수 확인, 값 0 개수 확인
+for (i in 1:ncol(data)){
+  print(c(i, length(which(is.na(data[i]))), length(which(data[i]==0))/length(data)))
+  
+}      # output : 열 번호, na 개수, 0이 차지하는 비율
+
+
+## 0이 50% 이상 : 지하층수(10)
+
+# 7, 9 번째 열은 평균으로 대체
+na_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+data[, c(7, 8, 9)] <- lapply(data[, c(7, 8, 9)], na_mean)
+
+# 10번째(지하층수)는 값이 0인 것이 95%이기 때문에 결측치도 0으로 채웠음
+data[is.na(data[, 10]),10] <-  0
+
+# 결측치 제거 완료 확인
+sum(length(which(is.na(data))))  # '주용도의 세부용도', '건축공사비/연면적' 결측치 존재
+
+###################### 데이터 재범주화 #########################
+# 특광역시도 재범주화 <= 모델링 결과 국외만 유의하고 나머지 광역시도는 유의하지 않음
+data$특광역시도 = ifelse(data$특광역시도 == '국외', '국외', '국내')
+data[,5] <-as.factor(data[,5])
+
+str(data$'특광역시도')
+
+# 기존 데이터 save
+data_org <- data
+
+#################### y에 대한 결측치 확인 ######################
+
+# `건축공사비/m2` 결측치 확인
+# 엑셀 상으로 결측치 + 연면적 데이터가 없어서 계산이 안 되고 #DIV/0!으로 나온 값 모두 결측치 처리됨
+
+y_na_idx = which(is.na(data$`건축공사비/m2`))  # 결측치 index
+data <- data[-y_na_idx, ]   # 해당 열에서 결측치를 가지는 행 제거
+
+dim(data)   # 238개의 결측치 제거됨
+```
+
+
+# EDA
+```{r}
+############################### 눈에 띄는 outlier 제거 ################################
+new_data <- data
+plot(new_data$`건축공사비/m2`)     # => 우측 상단에 outlier 확인  # 해당 값으로 인해 다른 값들 분포가 정확히 확인이 안 됨
+which(new_data[,'건축공사비/m2'] > 80000000)   # outlier값 행 번호 확인
+
+# 이상치 제거1
+new_data <- new_data[-2446,]
+
+plot(new_data$`건축공사비/m2`)   # => 상단 중앙에 outlier 확인
+which(new_data[,'건축공사비/m2'] > 20000000)     # outlier값 행 번호 확인
+
+# 이상치 제거2
+new_data <- new_data[-1326,]
+
+############################### y의 정규성 확인 ################################
+
+# y의 정규성 확인
+shapiro.test(new_data$`건축공사비/m2`)   # Shapiro-Wilk 검정실시하기(shapiro.test() 함수)
+
+# target 변수 분포 확인
+hist(new_data$`건축공사비/m2`)    
+plot(new_data$`건축공사비/m2`)
+
+library(moments)
+# 왜도
+skewness(new_data$`건축공사비/m2`)
+# 첨도
+kurtosis(new_data$`건축공사비/m2`)  # 왜도와 첨도 모두 높은 값이 나옴
+
+# 변환한 변수 분포 확인
+hist(log(new_data$`건축공사비/m2`)) # 오른쪽으로 꼬리가 긴 skewed distn. => log 변환
+plot(log(new_data$`건축공사비/m2`))
+
+# 왜도
+skewness(log(new_data$`건축공사비/m2`))
+# 첨도
+kurtosis((log(new_data$`건축공사비/m2`)))
+
+new_data$`건축공사비/m2`<-log(new_data$`건축공사비/m2`)
+```
+
+
+# 모델링1 ('주용도의 세부용도' 변수 포함)
+```{r}
+new_data_2 <- new_data
+
+colnames(new_data_2)
+rownames(new_data_2)=NULL   # index 초기화
+
+############################### feature selection ################################
+
+# Backward Elimination(후진제거법)
+full <- lm(`건축공사비/m2`~., data=new_data_2)
+backward <- step(full, direction="backward", trace = FALSE)
+# 모델 학습
+backward_lm <- lm(`건축공사비/m2` ~ 주건축구분 + `주용도의 세부용도` + 
+    신청기관_구분 + 특광역시도 + 연면적 + `발주방식(설계)`, data = new_data_2)
+summary(backward_lm)
+
+# forward selection(전진선택법)
+intercept <- lm(`건축공사비/m2`~1, data=new_data_2)
+forward <- step(intercept, direction='forward', scope=formula(full), trace = FALSE)
+# 모델 학습
+forward_lm <- lm(`건축공사비/m2` ~ 연면적 + 주건축구분 + `주용도의 세부용도` + 
+    `발주방식(설계)` + 신청기관_구분 + 특광역시도, data = new_data_2)
+summary(forward_lm)
+
+## 동일한 결과를 보여줌
+## R^2: 0.4295 / Adjusted R^2: 0.4085
+
+par(mfrow=c(2,2))
+plot(forward_lm)
+par(mfrow=c(1,1))
+
+## oulier가 보임
+# 제거하고 refit
+
+lm_final <- lm(`건축공사비/m2` ~ 연면적 + 주건축구분 + `주용도의 세부용도` + 
+    `발주방식(설계)` + 신청기관_구분 + 특광역시도, data = new_data_2[-c(905, 1817, 1,2446,2445, 131, 367),])
+summary(lm_final)
+## R^2: 0.4534 / Adjusted R^2: 0.4332  (R^2 값이 상승함=> 최종 모형으로 선택)
+
+par(mfrow=c(2,2))
+plot(lm_final)
+par(mfrow=c(1,1))
+## (1) 잔차가 모두 -2~+2 안으로 들어옴
+## (2) QQ-plot을 보았을 때 양 꼬리쪽이 정확히 들어맞지는 않음
+## (4) Cook's distance 0.5이하로 모두 들어와 이상치 없음
+```
+
+# 결론
+## Confidence interval
+```{r}
+# true값 불러오기
+data_org_1 <- as.numeric(data_org$`건축공사비/m2`[-c(y_na_idx)])
+
+# confidence interval 계산
+ci <- predict(lm_final, newdata = data, interval = "confidence", level=0.95)
+ci <- as.data.frame(exp(ci))  # 역변환
+
+# 원래 index와 결합, true값과 fitted 값 비교
+y_notna_idx = which(is.na(data_org['건축공사비/m2'])==FALSE)
+fitted <- round(cbind(data_org_1, ci),2)
+fitted <- round(cbind(y_notna_idx, fitted), 2)
+colnames(fitted) <- c('index', 'orig_data', 'fitted_data', 'lower_ci_f', 'upper_ci_f')
+
+head(fitted)  # 상위 6개
+```
+
+
+```{r Fig1, echo=TRUE, fig.height=5, fig.width=15}
+
+# 데이터에 이상치가 존재해서 축 범위를 조정해가면서 observed value vs fitted value에 대한 plot을 그렸음
+# 빨간선은 y=x 그래프로, observed value = fitted value를 나타낸 선임
+plt <- par(mfrow=c(1,3), mar=c(4,4,4,1), oma=c(0.5,0.5,0.5,0))
+
+# observed value vs fitted value in range[10,18]
+plot(log(fitted$orig_data), log(fitted$fitted_data), xlim=c(10, 18), ylim=c(10, 18), main="observed value vs fitted value in range[10,18]")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+# observed value vs fitted value in range[12,16]
+plot(log(fitted$orig_data), log(fitted$fitted_data), xlim=c(12, 16), ylim=c(12, 16), main="observed value vs fitted value in range[12,16]")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+# observed value vs fitted value in range[13.5,15.5]
+plot(log(fitted$orig_data), log(fitted$fitted_data), xlim=c(13.5, 15.5), ylim=c(13.5, 15.5), main="observed value vs fitted value in range[13.5, 15.5]")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+
+par(plt)
+```
+
+
+## Prediction interval
+```{r}
+# y(건축공사비/m2)가 결측치였던 행들 불러오기
+data_na <- data_org[c(y_na_idx),]
+rownames(data_na)=NULL    # index 초기화
+
+######################## 예측값 구하기 ##########################
+# 변수 '주용도의 세부용도' 중 '조리제조판매시설(300m^2미만), 박물관, 공연장(500m^2미만)은 
+# 학습된 모델에 없는 갑들이기 때문에 null값 처리하고 predict함
+
+# 해당 열의 값을 새로 채워서 볼 경우를 대비하여 모델에 있는 변수 값이 아닌 경우에도
+# 이를 결측치 처리하여 predict를 할 수 있도록 함
+for (i in 1:nrow(data_na)){
+  if ((data_na[i ,3] %in% unique(new_data_2$`주용도의 세부용도`))==FALSE){
+    data_na[i, 3] <- NA
+  }
+}
+
+# prediction interval 계산
+pi <- predict(lm_final, newdata = data_na, interval = "prediction", level=0.95)
+pi <- as.data.frame(round(exp(pi),4))
+
+# 원래 index와 결합
+predicted <- round(cbind(y_na_idx, pi), 2)
+colnames(predicted) <- c('index','predicted_data', 'lower_ci_P', 'upper_ci_p')
+
+head(predicted)  # 상위 6개
+# 모델에 사용된 변수인 '주용도'에 대해 결측치처리('제외용도')를 하지 못하여, 이에 해당하는 행은 예측값이 도출되지 않음
+```
+
+## 결과 파일
+```{r}
+# 결합을 위한 index 설정
+data_org['index'] = c(1:nrow(data_org))
+
+# 파일 결합
+final_result <- merge(data_org, fitted, by='index',all.x = TRUE) 
+final_result <- merge(final_result, predicted, by='index', all.x = TRUE)
+head(final_result)  # 상위 6개
+
+# csv로 저정
+# 저장 경로: 이 rmd 파일 저장 경로와 동일
+final_result[is.na(final_result)]<-""   # 결측값 빈칸으로 표시
+write.csv(final_result, file='분석완료_모델1.csv', row.names=FALSE)
+```
+
+## 추가적으로 필요한 부분
+```{r}
+## 1. 0으로 입력된 값들이 실제 0의 의미인지 아님 정확하게 측정된 값이 없어 그냥 채워넣어진 값인지 변수별로 설명 필요
+## 2. NA 값이 많은 변수의 경우, 변수별 자주 사용되는 통계값이 따로 있는지 확인( ex. 평균값, 중앙값 등)
+## 3. 범주별로 묶을 수 있는 기준 필요 - 범주형 변수의 경우(특히 주용도의 세부용도), class가 너무 많아 one-hot encoding 시 변수가 원래 변수의 몇 배로 증가하게 되는데 이 경우 class별로 묶는 게 좋을 것 같습니다. 
+### (ex. 특광역시도에서 국내에 해당하는 지역들은 모두 유의미하지 않아 국내로 묶어 해당 변수는 국내, 국외로만 코딩하였습니다)
+```
+
+
