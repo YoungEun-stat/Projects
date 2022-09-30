@@ -1,0 +1,13 @@
+Abstract
+
+Network analysis became an crucial part of researches nowadays. The main difference
+of network analysis from other methods, such as CNN and RNN, is that
+it takes connectivity between nodes into consideration. In other words, the model
+utilizes both nodes’ features and information of their neighbors. The two typical
+models for network analysis are Graph Convolutional Network(GCN) and Graph
+Attention Network(GAT). The major difference between the two is that GCN utilizes
+degrees as Iights, while GAT uses attention coefficient and masking to sort
+out neigboring nodes. In this paper, I discuss how these models work and apply
+them to actual Facebook data with four communities provided by SNAP. I compare
+performances of node classification with the two model and present visualizations
+with t-SNE plot to show the result visually.
