@@ -1,0 +1,69 @@
+---
+title: "hw5"
+output: html_document
+---
+
+1. 
+```{r}
+export.data=read.csv('export.csv', head=T);  attach(export.data);
+log.export = log(export)
+plot(export, type = 'l')
+plot(log.export, type = 'l')
+
+library(forecast) # 먼저 패키지 forecast 를 install 해야함
+aic=c()
+for(p in 1:10){
+ar.fit = Arima(log.export, order = c(p,0,0))
+aic[p] = ar.fit$aic
+ }
+plot(aic, type = 'o')
+
+#install.packages('fUnitRoots')
+library(fUnitRoots)
+adfTest(log.export, type = "ct", lags = 5)
+
+d.log.y = log.export[1:(length(log.export)-1)] - log.export[2:length(log.export)]
+
+library(forecast)
+aic=matrix(rep(0, 9*4), 9, 4); bic=matrix(rep(0, 9*4), 9, 4);
+for (p in 1:9) {for (q in 1:4) {
+  aic[p,q] = Arima(d.log.y, order=c(p-1,0,q-1))$aic
+ bic[p,q] = Arima(d.log.y, order=c(p-1,0,q-1))$bic}}
+
+aic
+bic
+
+arima.fit =Arima(log.export, order = c(7,1,2))
+arima.fit
+
+arima.hat=forecast(arima.fit, h=12)
+arima.hat
+plot(arima.hat)
+```
+
+
+
+```{r}
+library(mvtnorm); set.seed(1)
+A = matrix(c(1.2, 0.2, -0.4, 0.6), nrow = 2, byrow = T)
+e = rmvnorm(100, sigma = diag(2))
+y = matrix(0, nrow = 100, ncol = 2)
+y[1,] = e[1,]
+for(t in 2:100) y[t,] = A%*% as.matrix(y[(t-1),]) + as.matrix(e[t,])
+
+
+plot(y[,1], type = "b", pch = 19, cex = 0.6, xlab = "", ylab = "")
+plot(y[,2], type = "b", pch = 19, cex = 0.6, xlab = "", ylab = "")
+
+
+eigen(A)$values
+A
+I = diag(2)
+A-I
+
+beta = c(1,1)
+z = beta %*% t(y)
+plot(t(z), type='l')
+
+```
+

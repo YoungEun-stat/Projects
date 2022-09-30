@@ -1,0 +1,101 @@
+---
+title: "hw4"
+output: html_document
+---
+```{r}
+gov_exp = read.csv("Gov_Exp_data.csv", head=T)
+attach(gov_exp)
+
+n=length(Y)
+D1=ifelse(Quarter==1, 1,0)
+D2=ifelse(Quarter==2, 1,0)
+D3=ifelse(Quarter==3, 1,0)
+t = seq(1,n)
+
+OLS <- lm(Y~D1+D2+D3+t)
+F.break = c()
+for (tau in (0.15*n):(0.85*n)){
+  D = ifelse(t<=tau, 0, 1)
+  OLS.break = lm(Y~1+D1+D2+D3+t+D+D1:D+D2:D+D3:D+t:D)
+  F.break[tau] = anova(OLS, OLS.break)$F[2]
+}
+plot(F.break, type = 'l')
+abline(v=which.max(F.break), col='blue')
+max(F.break, na.rm=TRUE)
+which.max(F.break)
+gov_exp[35,]
+
+
+#(2)
+OLS <- lm(Y~D1+D2+D3+t)
+F.break2 = c()
+for (tau in (0.15*n):(0.85*n)){
+  D = ifelse(t<=tau, 0, 1)
+  OLS.break2 = lm(Y~D1+D2+D3+t+t:D)
+  F.break2[tau] = anova(OLS, OLS.break2)$F[2]
+}
+plot(F.break2, type = 'l')
+abline(v=which.max(F.break2), col='blue')
+max(F.break2, na.rm=TRUE)
+which.max(F.break2)
+gov_exp[28,]
+
+
+OLS <- lm(Y~D1+D2+D3+t)
+t.value = c()
+for (tau in (0.15*n):(0.85*n)){
+  D = ifelse(t<=tau, 0, 1)
+  OLS.break2 = lm(Y~D1+D2+D3+t+t:D)
+  t.value[tau] = summary(OLS.break2)$coefficient[6,3]
+}
+max(t.value, na.rm=TRUE)
+gov_exp[28,]
+
+```
+
+```{r}
+birth=read.csv("Kor_Birth_Death.csv", head=T)
+y=birth$Birth
+n=length(y)
+d.y=y[2:n]-y[1:(n-1)]
+
+
+plot(y, type='o')
+plot(d.y, type='o')
+cor
+cor = round(acf(d.y)$acf[2], 4)
+se = 1/sqrt(n)
+cor/se
+
+library(sandwich)
+OLS = lm(y ~ 1)
+OLS.se = sqrt(vcov(OLS)[1,1])
+sd(y)
+HAC.se = sqrt(vcovHAC(OLS)[1,1])
+LongRun_sig_y = HAC.se * sqrt(n)
+mean_y = mean(y)
+
+u = (y-mean_y)/(LongRun_sig_y * sqrt(n))
+cu = cumsum(u)
+max(abs(cu))
+which.max(abs(cu))
+
+
+
+OLS = lm(d.y ~ 1)
+OLS.se = sqrt(vcov(OLS)[1,1])
+mean_y = mean(d.y)
+u = (d.y-mean_y)/(sd(d.y) * sqrt(n))
+cu = cumsum(u)
+max(abs(cu))
+which.max(abs(cu))
+
+```
+
+
+
+
+
+
+
+
